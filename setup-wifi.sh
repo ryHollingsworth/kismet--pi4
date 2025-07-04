@@ -1,8 +1,12 @@
 #!/bin/bash
 
-if [[ $EUID -ne 0 ]]; then
-  echo "Please run as root"
-  exit 1
+SSID="$1"
+PASSWORD="$2"
+
+# Validate inputs
+if [ -z "$SSID" ] || [ -z "$PASSWORD" ]; then
+    echo "Usage: $0 <SSID> <PASSWORD>"
+    exit 1
 fi
 
 echo "[*] Installing required packages..."
@@ -33,7 +37,7 @@ echo "[*] Creating hostapd config..."
 cat > /etc/hostapd/hostapd.conf <<EOF
 interface=wlan0
 driver=nl80211
-ssid=PiAP
+ssid=$SSID
 hw_mode=g
 channel=7
 wmm_enabled=0
@@ -41,7 +45,7 @@ macaddr_acl=0
 auth_algs=1
 ignore_broadcast_ssid=0
 wpa=2
-wpa_passphrase=XXXXXXXXXXXXXX
+wpa_passphrase=$PASSWORD
 wpa_key_mgmt=WPA-PSK
 rsn_pairwise=CCMP
 EOF
