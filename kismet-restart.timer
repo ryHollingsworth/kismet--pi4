@@ -1,0 +1,10 @@
+[Unit]
+Description=Timer to restart Kismet when internet is lost
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=3min
+Unit=kismet-restart.service
+
+[Install]
+WantedBy=timers.target

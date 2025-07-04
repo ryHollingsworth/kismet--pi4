@@ -1,0 +1,15 @@
+[Unit]
+Description=Kismet Daemon
+After=network-online.target gpsd.service
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/start-kismet.sh
+User=root
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

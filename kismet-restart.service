@@ -1,0 +1,6 @@
+[Unit]
+Description=Network monitor and Kismet auto-restart
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/check-network-status.sh

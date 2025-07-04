@@ -1,0 +1,13 @@
+[Unit]
+Description=Log Sync Daemon
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/sync-kismet-logs.sh
+User=driver
+Environment=HOME=/home/driver
+
+[Install]
+WantedBy=multi-user.target
