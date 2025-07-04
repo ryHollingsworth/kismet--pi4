@@ -32,16 +32,21 @@ echo "[*] Updating and installing packages..."
 sudo apt update && sudo apt full-upgrade -y
 sudo apt install -y git gpsd gpsd-clients python3-gps kismet dkms build-essential libelf-dev linux-headers-$(uname -r) awscli netfilter-persistent iptables-persistent
 
+DRIVER_SRC="/usr/src/rtl8814au-5.6.4.2"
+
 echo "[*] Checking for existing rtl8814au driver..."
 if lsmod | grep -q 8814au; then
     echo "[+] rtl8814au driver already loaded. Skipping build/install."
 else
-    if [ ! -d /usr/src/rtl8814au ]; then
+    if [ ! -d "$DRIVER_SRC" ]; then
         echo "[*] Installing rtl8814au driver dependencies..."
         apt install -y dkms bc linux-headers-$(uname -r) build-essential git
 
         echo "[*] Cloning rtl8814au driver..."
-        git clone https://github.com/aircrack-ng/rtl8812au.git /usr/src/rtl8814au
+        git clone https://github.com/aircrack-ng/rtl8812au.git /usr/src/rtl8812au
+
+        echo "[*] Renaming source for DKMS compatibility..."
+        mv /usr/src/rtl8812au "$DRIVER_SRC"
 
         echo "[*] Installing driver via DKMS..."
         dkms add -m rtl8814au -v 5.6.4.2
@@ -56,6 +61,7 @@ else
         fi
     fi
 fi
+
 
 echo "[*] Enabling GPSD service..."
 sudo systemctl enable gpsd.socket
