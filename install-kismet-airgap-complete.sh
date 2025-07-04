@@ -24,6 +24,10 @@ read -s -p "Enter your AWS Secret Access Key: " AWS_SECRET_ACCESS_KEY
 echo
 read -p "Enter your S3 Bucket name: " S3_BUCKET
 
+read -p "Enter Kismet GUI username: " KISMET_USER
+read -s -p "Enter Kismet GUI password: " KISMET_PASS
+echo
+
 GPS_DEVICE="/dev/ttyACM0"
 WIFI_INTERFACE="wlan1"
 KISMET_LOG_DIR="/home/$WARDRIVE_USER/kismet_logs"
@@ -32,36 +36,41 @@ echo "[*] Updating and installing packages..."
 sudo apt update && sudo apt full-upgrade -y
 sudo apt install -y git gpsd gpsd-clients python3-gps kismet dkms build-essential libelf-dev linux-headers-$(uname -r) awscli netfilter-persistent iptables-persistent
 
-DRIVER_SRC="/usr/src/rtl8814au-5.6.4.2"
+echo "[*] Configuring /etc/default/gpsd..."
+sudo tee /etc/default/gpsd > /dev/null <<EOF
+START_DAEMON="true"
+DEVICES="$GPS_DEVICE"
+GPSD_OPTIONS="-n"
+USBAUTO="false"
+EOF
 
-echo "[*] Checking for existing rtl8814au driver..."
-if lsmod | grep -q 8814au; then
-    echo "[+] rtl8814au driver already loaded. Skipping build/install."
-else
-    if [ ! -d "$DRIVER_SRC" ]; then
-        echo "[*] Installing rtl8814au driver dependencies..."
-        apt install -y dkms bc linux-headers-$(uname -r) build-essential git
+echo "[*] Enabling GPSD service..."
+sudo systemctl enable gpsd.socket
+sudo systemctl start gpsd.socket
 
-        echo "[*] Cloning rtl8814au driver..."
-        git clone https://github.com/aircrack-ng/rtl8812au.git /usr/src/rtl8812au
+echo "[*] Checking DKMS status for rtl8814au..."
 
-        echo "[*] Renaming source for DKMS compatibility..."
-        mv /usr/src/rtl8812au "$DRIVER_SRC"
+DKMS_OUTPUT=$(dkms status rtl8814au 2>/dev/null)
 
-        echo "[*] Installing driver via DKMS..."
-        dkms add -m rtl8814au -v 5.6.4.2
-        dkms build -m rtl8814au -v 5.6.4.2
-        dkms install -m rtl8814au -v 5.6.4.2
+if echo "$DKMS_OUTPUT" | grep -q "installed"; then
+    echo "[+] rtl8814au driver already installed via DKMS. Skipping build."
+elif echo "$DKMS_OUTPUT" | grep -q "built"; then
+    echo "[*] Driver built but not installed."
+
+    MODULE_PATH="/lib/modules/$(uname -r)/updates/dkms/88XXau.ko.xz"
+    if [ -f "$MODULE_PATH" ]; then
+        echo "[+] Module file already exists at $MODULE_PATH. Assuming it's already installed. Skipping dkms install."
     else
-        echo "[+] rtl8814au source already exists, checking DKMS status..."
-        if ! dkms status | grep -q "rtl8814au, 5.6.4.2, $(uname -r), arm64: installed"; then
-            dkms install -m rtl8814au -v 5.6.4.2
-        else
-            echo "[+] rtl8814au already installed via DKMS."
-        fi
+        echo "[*] Installing built module..."
+        dkms install -m rtl8814au -v 5.6.4.2 || echo "[!] DKMS install failed, but module may already be in place."
     fi
+else
+    echo "[*] Driver not found in DKMS. Proceeding to clone and build..."
+    git clone https://github.com/aircrack-ng/rtl8812au.git /usr/src/rtl8814au
+    dkms add -m rtl8814au -v 5.6.4.2
+    dkms build -m rtl8814au -v 5.6.4.2
+    dkms install -m rtl8814au -v 5.6.4.2
 fi
-
 
 echo "[*] Enabling GPSD service..."
 sudo systemctl enable gpsd.socket
@@ -71,6 +80,19 @@ sudo gpsd -n "$GPS_DEVICE" -F /var/run/gpsd.sock
 echo "[*] Creating log directory..."
 sudo mkdir -p "$KISMET_LOG_DIR"
 sudo chown "$WARDRIVE_USER:$WARDRIVE_USER" "$KISMET_LOG_DIR"
+
+echo "[*] Applying Kismet Configs ..."
+KISMET_CONF_DIR="/home/$WARDRIVE_USER/.kismet"
+sudo mkdir -p "$KISMET_CONF_DIR"
+
+sudo tee "$KISMET_CONF_DIR/kismet_httpd.conf" > /dev/null <<EOF
+httpd_username=$KISMET_USER
+httpd_password=$KISMET_PASS
+EOF
+
+sudo chown -R "$WARDRIVE_USER:$WARDRIVE_USER" "$KISMET_CONF_DIR"
+sudo chmod 700 "$KISMET_CONF_DIR"
+sudo chmod 600 "$KISMET_CONF_DIR/kismet_httpd.conf"
 
 echo "[*] Configuring AWS credentials..."
 mkdir -p /home/$WARDRIVE_USER/.aws
@@ -82,19 +104,48 @@ EOF
 sudo chown -R "$WARDRIVE_USER:$WARDRIVE_USER" /home/$WARDRIVE_USER/.aws
 
 echo "[*] Setting S3 bucket name for sync script..."
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 sed -i "s|S3_BUCKET=.*|S3_BUCKET=\"s3://$S3_BUCKET\"|" "$SCRIPT_DIR/sync-kismet-logs.sh"
 
 if [[ "$SETUP_AP" =~ ^[Yy]$ ]]; then
     echo "[*] Configuring wlan0 as an access point..."
-    sudo bash /home/$WARDRIVE_USER/kismet_logs/setup-wifi.sh "$AP_SSID" "$AP_PASS"
+    sudo bash "$SCRIPT_DIR/setup-wifi.sh" "$AP_SSID" "$AP_PASS"
 fi
 
+echo "[*] Copying core .sh scripts to /usr/local/bin..."
+sudo cp "$SCRIPT_DIR"/start-kismet.sh /usr/local/bin/
+sudo cp "$SCRIPT_DIR"/sync-kismet-logs.sh /usr/local/bin/
+sudo cp "$SCRIPT_DIR/check-network-status.sh" /usr/local/bin/
+sudo chmod +x /usr/local/bin/start-kismet.sh /usr/local/bin/sync-kismet-logs.sh /usr/local/bin/check-network-status.sh
+
+echo "[*] Updating kismet.service to run as $WARDRIVE_USER..."
+if grep -q "^User=" /etc/systemd/system/kismet.service; then
+    sudo sed -i "s/^User=.*/User=$WARDRIVE_USER/" /etc/systemd/system/kismet.service
+else
+    sudo sed -i "/^\[Service\]/a User=$WARDRIVE_USER" /etc/systemd/system/kismet.service
+fi
+
+echo "[*] Applying Kismet config files..."
+sudo cp "$SCRIPT_DIR"/kismet*.conf /etc/kismet/
+
 echo "[*] Installing systemd services and timers..."
-sudo cp /home/$WARDRIVE_USER/kismet_logs/kismet*.service /etc/systemd/system/
-sudo cp /home/$WARDRIVE_USER/kismet_logs/kismet*.timer /etc/systemd/system/
+sudo cp "$SCRIPT_DIR"/kismet*.service /etc/systemd/system/
+sudo cp "$SCRIPT_DIR"/kismet*.timer /etc/systemd/system/
 sudo systemctl daemon-reexec
 sudo systemctl daemon-reload
 sudo systemctl enable kismet.service kismet-restart.timer kismet-sync.service
+
+echo "[*] Setting $WARDRIVE_USER permissions"
+sudo usermod -aG kismet "$WARDRIVE_USER"
+
+echo "[*] Disabling NetworkManager..."
+systemctl disable NetworkManager
+systemctl stop NetworkManager
+
+echo "[*] Setting static DNS resolver..."
+rm -f /etc/resolv.conf
+echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
+sudo chattr +i /etc/resolv.conf
 
 echo "[✓] Setup complete. Rebooting is recommended."
