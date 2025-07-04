@@ -58,7 +58,8 @@ EOF
 sudo chown -R "$WARDRIVE_USER:$WARDRIVE_USER" /home/$WARDRIVE_USER/.aws
 
 echo "[*] Setting S3 bucket name for sync script..."
-sed -i "s|S3_BUCKET=.*|S3_BUCKET="s3://$S3_BUCKET"|" /home/$WARDRIVE_USER/kismet_logs/sync-kismet-logs.sh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+sed -i "s|S3_BUCKET=.*|S3_BUCKET=\"s3://$S3_BUCKET\"|" "$SCRIPT_DIR/sync-kismet-logs.sh"
 
 if [[ "$SETUP_AP" =~ ^[Yy]$ ]]; then
     echo "[*] Configuring wlan0 as an access point..."
