@@ -31,12 +31,6 @@ done
 # sudo sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
 # sudo systemctl restart ssh
 
-TEMP_DIRS=(
-    "$HOME/rtl8812au"
-    "$HOME/kismet--pi4"
-    "$HOME/Downloads"
-)
-
 echo "[*] Clearing history..."
 
 sudo -u "$WARDRIVE_USER" bash -c 'echo "" > ~/.bash_history'
@@ -47,13 +41,20 @@ MOTD_FILE="/etc/motd"
 echo "[*] Updating login MOTD..."
 echo "Welcome to WARP 2.0" | sudo tee "$MOTD_FILE" > /dev/null
 
+USER_HOME="/home/$WARDRIVE_USER"
+
+TEMP_DIRS=(
+    "$USER_HOME/rtl8812au"
+    "$USER_HOME/kismet--pi4"
+    "$USER_HOME/Downloads"
+)
+
 echo "[*] Removing temp files..."
 for dir in "${TEMP_DIRS[@]}"; do
     if [ -d "$dir" ]; then
         echo "[-] Deleting $dir"
         rm -rf "$dir"
     fi
-
 done
 
 echo "[✓] Cleanup complete. Reboot recommended."
