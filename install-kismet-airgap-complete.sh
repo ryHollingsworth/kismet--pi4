@@ -2,13 +2,8 @@
 
 set -e
 
-########################################
-# Interactive Setup for Kismet Airgap #
-########################################
-
 echo "[*] Starting Kismet Airgap Installer..."
 
-# Prompt for input
 read -p "Enter username for Pi (default: driver): " WARDRIVE_USER
 WARDRIVE_USER=${WARDRIVE_USER:-driver}
 
