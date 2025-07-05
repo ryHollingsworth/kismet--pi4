@@ -57,6 +57,20 @@ If enabled during intial setup the wlan0 interface creates a management Wi-Fi Ac
 - Dashboard: `http://<Pi_IP>:2501`
 - Credentials are saved to `~/.kismet/kismet_httpd.conf` after setup.
 
+## Usage Behavior
+The WARP 2.0 system is designed to automatically manage scanning and log synchronization based on network availability:
+
+**No Internet at Boot:**
+If the system is started without an internet connection, it assumes a field deployment and automatically launches Kismet in headless scanning mode with GPS support.
+
+**Internet Present at Boot:**
+If a connection is detected during boot, the system will not start scanning. Instead, it enters sync mode, where all previously recorded Kismet logs are securely uploaded to the configured AWS S3 bucket. The system uses hash confirmation to ensure each log has been fully and correctly transferred before removing it from local storage.
+
+**Connection Lost After Boot:**
+If internet connectivity is lost after startup (e.g., due to signal drop or intentional disconnection), a restart timer is triggered. After a short delay, the system automatically launches Kismet scanning again—assuming the user completed preflight setup (e.g., interface, GPS, logging, and user credentials).
+
+⚠️ Preflight Reminder: Ensure the wireless interface, GPS device, and permissions are correctly configured before field use. Logs will only be captured and synced if all components are operational.
+
 ## Roadmap / Future Enhancements
 
 ### 🔐 WireGuard VPN Integration
