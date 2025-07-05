@@ -50,26 +50,38 @@ sudo systemctl start gpsd.socket
 
 echo "[*] Checking DKMS status for rtl8814au..."
 
-DKMS_OUTPUT=$(dkms status rtl8814au 2>/dev/null)
+DRIVER_NAME="rtl8814au"
+DRIVER_VERSION="5.6.4.2"
+DRIVER_CLONE_DIR="/usr/src/${DRIVER_NAME}"
+DRIVER_SRC_DIR="/usr/src/${DRIVER_NAME}-${DRIVER_VERSION}"
+MODULE_PATH="/lib/modules/$(uname -r)/updates/dkms/88XXau.ko.xz"
+
+DKMS_OUTPUT=$(dkms status ${DRIVER_NAME} 2>/dev/null)
 
 if echo "$DKMS_OUTPUT" | grep -q "installed"; then
-    echo "[+] rtl8814au driver already installed via DKMS. Skipping build."
+    echo "[+] ${DRIVER_NAME} driver already installed via DKMS. Skipping build."
 elif echo "$DKMS_OUTPUT" | grep -q "built"; then
     echo "[*] Driver built but not installed."
 
-    MODULE_PATH="/lib/modules/$(uname -r)/updates/dkms/88XXau.ko.xz"
     if [ -f "$MODULE_PATH" ]; then
         echo "[+] Module file already exists at $MODULE_PATH. Assuming it's already installed. Skipping dkms install."
     else
         echo "[*] Installing built module..."
-        dkms install -m rtl8814au -v 5.6.4.2 || echo "[!] DKMS install failed, but module may already be in place."
+        dkms install -m ${DRIVER_NAME} -v ${DRIVER_VERSION} || echo "[!] DKMS install failed, but module may already be in place."
     fi
 else
     echo "[*] Driver not found in DKMS. Proceeding to clone and build..."
-    git clone https://github.com/aircrack-ng/rtl8812au.git /usr/src/rtl8814au
-    dkms add -m rtl8814au -v 5.6.4.2
-    dkms build -m rtl8814au -v 5.6.4.2
-    dkms install -m rtl8814au -v 5.6.4.2
+
+    if [ ! -d "$DRIVER_SRC_DIR" ]; then
+        git clone https://github.com/aircrack-ng/rtl8812au.git "$DRIVER_CLONE_DIR"
+        mv "$DRIVER_CLONE_DIR" "$DRIVER_SRC_DIR"
+    else
+        echo "[*] Driver source already exists at $DRIVER_SRC_DIR. Skipping clone."
+    fi
+
+    dkms add -m ${DRIVER_NAME} -v ${DRIVER_VERSION}
+    dkms build -m ${DRIVER_NAME} -v ${DRIVER_VERSION}
+    dkms install -m ${DRIVER_NAME} -v ${DRIVER_VERSION}
 fi
 
 echo "[*] Enabling GPSD service..."
@@ -119,6 +131,13 @@ sudo cp "$SCRIPT_DIR"/sync-kismet-logs.sh /usr/local/bin/
 sudo cp "$SCRIPT_DIR/check-network-status.sh" /usr/local/bin/
 sudo chmod +x /usr/local/bin/start-kismet.sh /usr/local/bin/sync-kismet-logs.sh /usr/local/bin/check-network-status.sh
 
+echo "[*] Applying Kismet config files..."
+sudo cp "$SCRIPT_DIR"/kismet*.conf /etc/kismet/
+
+echo "[*] Installing systemd services and timers..."
+sudo cp "$SCRIPT_DIR"/kismet*.service /etc/systemd/system/
+sudo cp "$SCRIPT_DIR"/kismet*.timer /etc/systemd/system/
+
 echo "[*] Updating kismet.service to run as $WARDRIVE_USER..."
 if grep -q "^User=" /etc/systemd/system/kismet.service; then
     sudo sed -i "s/^User=.*/User=$WARDRIVE_USER/" /etc/systemd/system/kismet.service
@@ -126,12 +145,6 @@ else
     sudo sed -i "/^\[Service\]/a User=$WARDRIVE_USER" /etc/systemd/system/kismet.service
 fi
 
-echo "[*] Applying Kismet config files..."
-sudo cp "$SCRIPT_DIR"/kismet*.conf /etc/kismet/
-
-echo "[*] Installing systemd services and timers..."
-sudo cp "$SCRIPT_DIR"/kismet*.service /etc/systemd/system/
-sudo cp "$SCRIPT_DIR"/kismet*.timer /etc/systemd/system/
 sudo systemctl daemon-reexec
 sudo systemctl daemon-reload
 sudo systemctl enable kismet.service kismet-restart.timer kismet-sync.service
