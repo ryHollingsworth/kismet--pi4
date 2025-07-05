@@ -29,7 +29,7 @@ WARP 2.0 is an automated Kismet-based wardriving deployment tailored for Raspber
 3. Clone this repository and run:
 
 ```bash
-chmod +x \*.sh
+chmod +x *.sh
 sudo ./install.sh
 ```
 
